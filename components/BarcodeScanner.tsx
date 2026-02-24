@@ -36,7 +36,7 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       // Konfigurasi khusus untuk data besar
       const config = {
         fps: 5,  // Turunkan FPS untuk stabilitas
-        qrbox: { width: 300, height: 300 }, // Perbesar area scan
+        qrbox: { width: 250, height: 250 }, // Perbesar area scan
         aspectRatio: 1.0,
         disableFlip: false,
         rememberLastUsedCamera: true,
