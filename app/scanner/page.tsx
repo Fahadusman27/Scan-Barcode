@@ -67,71 +67,61 @@ export default function ScannerPage() {
       const qrData = JSON.parse(decodedText);
       
       let usersArray = [];
-      if (qrData.usr && Array.isArray(qrData.usr)) {
-        usersArray = qrData.usr;
+      if (qrData.u && Array.isArray(qrData.u)) {
+        usersArray = qrData.u;
       } else {
         throw new Error("Format data tidak valid: tidak menemukan array users");
       }
 
-      const convertedUsers = usersArray.map((u: any) => ({
-        user_id: u.u || "N/A",
-        device_id: u.d || "N/A",
-        course_id: u.c || "N/A",
-        session_id: u.s || "N/A",
-        nama_user: u.n || "N/A",
-        nim_user: u.i || "N/A",
-      }));
+    const convertedUsers = usersArray.map((item: any[]) => ({
+      user_id: item[0] || "N/A",
+      nama_user: item[1] || "N/A",
+      nim_user: item[2] || "N/A",
+      device_id: item[3] || "N/A",
+      course_id: item[4] || "N/A",
+      session_id: item[5] || "N/A"
+    }));
 
       console.log('Converted users:', convertedUsers);
       console.log('Current index:', currentIndex);
       console.log('Is data loaded:', isDataLoaded);
 
       // Jika pertama kali scan atau data berbeda, simpan semua data
-      if (!isDataLoaded || JSON.stringify(allUsers) !== JSON.stringify(convertedUsers)) {
-        setAllUsers(convertedUsers);
-        setIsDataLoaded(true);
-        setCurrentIndex(0);
-        
-        // Gunakan index 0 untuk scan pertama
-        const currentUser = convertedUsers[0];
-        
-        if (!currentUser) {
-          throw new Error("Tidak ada data user");
-        }
-
-        // Kirim data dengan nomor urut 1
-        await processScan(currentUser, 1, convertedUsers);
-      } else {
-        // Gunakan currentIndex yang sudah ada
-        const currentUser = allUsers[currentIndex];
-        
-        if (!currentUser) {
-          throw new Error(`Tidak ada data user untuk index ${currentIndex}`);
-        }
-
-        // Kirim data dengan nomor urut currentIndex + 1
-        await processScan(currentUser, currentIndex + 1, allUsers);
+    if (!isDataLoaded) {
+      setAllUsers(convertedUsers);
+      setIsDataLoaded(true);
+      setCurrentIndex(0);
+      
+      // Scan pertama - kirim user pertama
+      await processScan(convertedUsers[0], 1, convertedUsers);
+    } else {
+      // Gunakan currentIndex yang sudah ada
+      const currentUser = allUsers[currentIndex];
+      if (!currentUser) {
+        throw new Error(`Tidak ada data user untuk index ${currentIndex}`);
       }
-
-    } catch (error) {
-      console.error("Scan error:", error);
-      
-      const errorScan: ScanHistory = {
-        id: Date.now().toString(),
-        user_id: "ERROR",
-        nama_user: "Gagal",
-        nim_user: "-",
-        scan_number: currentIndex + 1,
-        timestamp: new Date(),
-        status: "error",
-        message: error instanceof Error ? error.message : "Format QR Code tidak valid",
-      };
-      
-      setLastScan(errorScan);
-    } finally {
-      setIsSending(false);
+      await processScan(currentUser, currentIndex + 1, allUsers);
     }
-  };
+
+  } catch (error) {
+    console.error("Scan error:", error);
+    
+    const errorScan: ScanHistory = {
+      id: Date.now().toString(),
+      user_id: "ERROR",
+      nama_user: "Gagal",
+      nim_user: "-",
+      scan_number: currentIndex + 1,
+      timestamp: new Date(),
+      status: "error",
+      message: error instanceof Error ? error.message : "Format QR Code tidak valid",
+    };
+    
+    setLastScan(errorScan);
+  } finally {
+    setIsSending(false);
+  }
+};
 
   // Fungsi terpisah untuk proses scan
   const processScan = async (currentUser: any, scanNumber: number, usersList: any[]) => {
@@ -160,45 +150,43 @@ export default function ScannerPage() {
     });
 
     // Simpan NIM yang sudah discan ke localStorage untuk sinkronisasi dengan barcode page
-    const scannedNIMs = JSON.parse(localStorage.getItem('scannedNIMs') || '[]');
-    if (!scannedNIMs.includes(currentUser.nim_user)) {
-      scannedNIMs.push(currentUser.nim_user);
-      localStorage.setItem('scannedNIMs', JSON.stringify(scannedNIMs));
-      console.log('Updated scanned NIMs:', scannedNIMs);
-    }
+  const scannedNIMs = JSON.parse(localStorage.getItem('scannedNIMs') || '[]');
+  if (!scannedNIMs.includes(currentUser.nim_user)) {
+    scannedNIMs.push(currentUser.nim_user);
+    localStorage.setItem('scannedNIMs', JSON.stringify(scannedNIMs));
+  }
 
     // Catat history scan
-    const newScan: ScanHistory = {
-      id: Date.now().toString(),
-      user_id: currentUser.user_id,
-      nama_user: currentUser.nama_user,
-      nim_user: currentUser.nim_user,
-      scan_number: scanNumber,
-      timestamp: new Date(),
-      status: "success",
-    };
-
-    setScanHistory(prev => {
-      const updated = [newScan, ...prev].slice(0, 20);
-      localStorage.setItem("scanHistory", JSON.stringify(updated));
-      return updated;
-    });
-    
-    setLastScan(newScan);
-    setTotalScans(prev => prev + 1);
-
-    // Update ke index berikutnya
-    const nextIndex = scanNumber; // Karena scanNumber = currentIndex + 1
-    if (nextIndex < usersList.length) {
-      setCurrentIndex(nextIndex);
-      console.log('Next index:', nextIndex);
-    } else {
-      setCurrentIndex(0); // Reset jika sudah selesai
-      alert("Semua data telah discan! Kembali ke awal.");
-    }
-
-    if (navigator.vibrate) navigator.vibrate(100);
+  // Catat history
+  const newScan: ScanHistory = {
+    id: Date.now().toString(),
+    user_id: currentUser.user_id,
+    nama_user: currentUser.nama_user,
+    nim_user: currentUser.nim_user,
+    scan_number: scanNumber,
+    timestamp: new Date(),
+    status: "success",
   };
+
+  setScanHistory(prev => {
+    const updated = [newScan, ...prev].slice(0, 20);
+    localStorage.setItem("scanHistory", JSON.stringify(updated));
+    return updated;
+  });
+  
+  setLastScan(newScan);
+  setTotalScans(prev => prev + 1);
+
+  // Update index
+  if (scanNumber < usersList.length) {
+    setCurrentIndex(scanNumber);
+  } else {
+    setCurrentIndex(0);
+    alert("Semua data telah discan! Kembali ke awal.");
+  }
+
+  if (navigator.vibrate) navigator.vibrate(100);
+};
 
   const clearHistory = () => {
     setScanHistory([]);
