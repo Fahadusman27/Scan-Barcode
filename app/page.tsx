@@ -8,25 +8,22 @@ export default function BarcodeScannerApp() {
   const [status, setStatus] = useState<string>("Siap. Izinkan akses kamera jika diminta.");
   const [loading, setLoading] = useState<boolean>(false);
 
-  // Gunakan useRef agar scanner tidak dirender ganda oleh React Strict Mode
   const scannerRef = useRef<Html5QrcodeScanner | null>(null);
 
-  const scriptUrl = "https://script.google.com/macros/s/AKfycb.../exec"; // GANTI DENGAN URL GAS KAMU
+  // URL GAS TERBARU KAMU
+  const scriptUrl = "https://script.google.com/macros/s/AKfycbyQf-D10MRY4d9x64l16lszuYEv9p6ggVd_vZwEfyEiqFumXILm1P0a2yMjzXXpsVxT/exec";
 
   useEffect(() => {
-    // Fungsi Sukses
     const onScanSuccess = async (decodedText: string) => {
       if (scannerRef.current) {
-        scannerRef.current.clear(); // Hentikan kamera
+        scannerRef.current.clear(); 
       }
       setScannedData(decodedText);
       await sendDataToGAS(decodedText);
     };
 
-    // Fungsi Gagal (abaikan agar console tidak penuh)
     const onScanFailure = () => {};
 
-    // Cek apakah scanner sudah jalan agar tidak double-render
     if (!scannerRef.current) {
       scannerRef.current = new Html5QrcodeScanner(
         "reader",
@@ -41,26 +38,26 @@ export default function BarcodeScannerApp() {
       scannerRef.current.render(onScanSuccess, onScanFailure);
     }
 
-    // Cleanup yang benar saat pindah halaman
     return () => {
       if (scannerRef.current) {
         scannerRef.current.clear().catch((error) => console.error("Gagal stop scanner", error));
         scannerRef.current = null;
       }
     };
-  }, []); // Kosong = hanya dijalankan sekali saat komponen dimuat
+  }, []);
 
   const sendDataToGAS = async (data: string) => {
     setLoading(true);
     setStatus("Mengirim data ke database...");
 
     try {
-      const formData = new FormData();
-      formData.append("barcode_data", data);
+      // PERBAIKAN: Menggunakan URLSearchParams agar formatnya 100% cocok dengan GAS
+      const params = new URLSearchParams();
+      params.append("barcode_data", data);
 
       await fetch(scriptUrl, {
         method: "POST",
-        body: formData,
+        body: params, // Kirim params, bukan formData
         mode: "no-cors",
       });
 
@@ -84,7 +81,6 @@ export default function BarcodeScannerApp() {
           Web Barcode Scanner
         </h1>
 
-        {/* Kotak ini HARUS SELALU ADA di DOM saat useEffect berjalan */}
         {!scannedData && (
           <div className="mb-4 overflow-hidden rounded-lg border-2 border-dashed border-gray-300 min-h-[300px] flex items-center justify-center bg-gray-50">
             <div id="reader" className="w-full"></div>
