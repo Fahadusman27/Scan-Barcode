@@ -59,81 +59,117 @@ export default function ScannerPage() {
 
   // Scan handler
 
-const handleScan = async (decodedText: string) => {
-  setIsSending(true);
+    const handleScan = async (decodedText: string) => {
+    setIsSending(true);
 
-  try {
-    const qrData = JSON.parse(decodedText);
-    
-    let usersArray = [];
-    if (qrData.usr && Array.isArray(qrData.usr)) {
-      usersArray = qrData.usr;
-    } else {
-      throw new Error("Format data tidak valid");
+    try {
+        const qrData = JSON.parse(decodedText);
+        
+        let usersArray = [];
+        if (qrData.usr && Array.isArray(qrData.usr)) {
+        usersArray = qrData.usr;
+        } else {
+        throw new Error("Format data tidak valid");
+        }
+
+        const convertedUsers = usersArray.map((u: any) => ({
+        user_id: u.u || "N/A",
+        device_id: u.d || "N/A",
+        course_id: u.c || "N/A",
+        session_id: u.s || "N/A",
+        nama_user: u.n || "N/A",
+        nim_user: u.i || "N/A",
+        }));
+
+        // Jika pertama kali scan, simpan semua data
+        if (!isDataLoaded) {
+        setAllUsers(convertedUsers);
+        setIsDataLoaded(true);
+        setCurrentIndex(0);
+        }
+
+        // Ambil user berdasarkan index
+        const currentUser = convertedUsers[currentIndex];
+        
+        if (!currentUser) {
+        throw new Error("Tidak ada data user");
+        }
+
+        // Kirim data dengan nomor urut
+        const scanData = {
+        scan_number: currentIndex + 1,
+        nim_user: currentUser.nim_user,
+        nama_user: currentUser.nama_user,
+        user_id: currentUser.user_id,
+        device_id: currentUser.device_id,
+        course_id: currentUser.course_id,
+        session_id: currentUser.session_id,
+        scanned_at: new Date().toISOString(),
+        };
+
+        const formData = new URLSearchParams();
+        formData.append("barcode_data", JSON.stringify(scanData));
+
+        await fetch(APPS_SCRIPT_URL, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: formData,
+        });
+
+        // 🔥 TAMBAHKAN DI SINI - Setelah fetch berhasil 🔥
+        const scannedNIMs = JSON.parse(localStorage.getItem('scannedNIMs') || '[]');
+        if (!scannedNIMs.includes(currentUser.nim_user)) {
+        scannedNIMs.push(currentUser.nim_user);
+        localStorage.setItem('scannedNIMs', JSON.stringify(scannedNIMs));
+        }
+
+        // Catat history scan
+        const newScan: ScanHistory = {
+        id: Date.now().toString(),
+        user_id: currentUser.user_id,
+        nama_user: currentUser.nama_user,
+        nim_user: currentUser.nim_user,
+        scan_number: currentIndex + 1,
+        timestamp: new Date(),
+        status: "success",
+        };
+
+        setScanHistory(prev => [newScan, ...prev].slice(0, 20));
+        setLastScan(newScan);
+        setTotalScans(prev => prev + 1);
+
+        // Update ke index berikutnya
+        const nextIndex = currentIndex + 1;
+        if (nextIndex < convertedUsers.length) {
+        setCurrentIndex(nextIndex);
+        } else {
+        setCurrentIndex(0); // Reset jika sudah selesai
+        alert("Semua data telah discan!");
+        }
+
+        if (navigator.vibrate) navigator.vibrate(100);
+
+    } catch (error) {
+        console.error("Scan error:", error);
+        
+        // Catat error scan
+        const errorScan: ScanHistory = {
+        id: Date.now().toString(),
+        user_id: "ERROR",
+        nama_user: "Gagal",
+        nim_user: "-",
+        scan_number: currentIndex + 1,
+        timestamp: new Date(),
+        status: "error",
+        message: error instanceof Error ? error.message : "Format QR Code tidak valid",
+        };
+        
+        setLastScan(errorScan);
+    } finally {
+        setIsSending(false);
     }
-
-    const convertedUsers = usersArray.map((u: any) => ({
-      user_id: u.u || "N/A",
-      device_id: u.d || "N/A",
-      course_id: u.c || "N/A",
-      session_id: u.s || "N/A",
-      nama_user: u.n || "N/A",
-      nim_user: u.i || "N/A",
-    }));
-
-    // Jika pertama kali scan, simpan semua data
-    if (!isDataLoaded) {
-      setAllUsers(convertedUsers);
-      setIsDataLoaded(true);
-      setCurrentIndex(0);
-    }
-
-    // Ambil user berdasarkan index
-    const currentUser = convertedUsers[currentIndex];
-    
-    if (!currentUser) {
-      throw new Error("Tidak ada data user");
-    }
-
-    // Kirim data dengan nomor urut
-    const scanData = {
-      scan_number: currentIndex + 1,
-      nim_user: currentUser.nim_user,
-      nama_user: currentUser.nama_user,
-      user_id: currentUser.user_id,
-      device_id: currentUser.device_id,
-      course_id: currentUser.course_id,
-      session_id: currentUser.session_id,
-      scanned_at: new Date().toISOString(),
     };
-
-    const formData = new URLSearchParams();
-    formData.append("barcode_data", JSON.stringify(scanData));
-
-    await fetch(APPS_SCRIPT_URL, {
-      method: "POST",
-      mode: "no-cors",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: formData,
-    });
-
-    // Update ke index berikutnya
-    const nextIndex = currentIndex + 1;
-    if (nextIndex < convertedUsers.length) {
-      setCurrentIndex(nextIndex);
-    } else {
-      setCurrentIndex(0); // Reset jika sudah selesai
-      alert("Semua data telah discan!");
-    }
-
-    if (navigator.vibrate) navigator.vibrate(100);
-
-  } catch (error) {
-    console.error("Scan error:", error);
-  } finally {
-    setIsSending(false);
-  }
-};
 
   const clearHistory = () => {
     setScanHistory([]);
@@ -141,12 +177,13 @@ const handleScan = async (decodedText: string) => {
     localStorage.removeItem("scanHistory");
   };
 
-  const resetScanner = () => {
+    const resetScanner = () => {
     setAllUsers([]);
     setIsDataLoaded(false);
     setCurrentIndex(0);
+    localStorage.removeItem('scannedNIMs'); // 🔥 TAMBAHKAN INI
     alert("Scanner direset. Scan QR Code lagi untuk memulai dari awal.");
-  };
+    };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
