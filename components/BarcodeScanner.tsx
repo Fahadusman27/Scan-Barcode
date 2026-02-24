@@ -13,8 +13,8 @@ interface BarcodeScannerProps {
 
 const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
   onScan,
-  width = 400,
-  height = 400,
+  width = 350,
+  height = 350,
   fps = 10
 }) => {
   const scannerRef = useRef<Html5Qrcode | null>(null);
@@ -37,7 +37,7 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
         { facingMode: 'environment' },
         {
           fps,
-          qrbox: { width: 200, height: 200 },
+          qrbox: { width: 250, height: 250 },
         },
         (decodedText) => {
           // Panggil callback onScan saat barcode terdeteksi
