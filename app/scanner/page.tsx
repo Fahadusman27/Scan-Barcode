@@ -36,7 +36,7 @@ export default function ScannerPage() {
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [isDataLoaded, setIsDataLoaded] = useState<boolean>(false);
-  
+
   // State untuk scan
   const [lastScan, setLastScan] = useState<ScanHistory | null>(null);
   const [scanHistory, setScanHistory] = useState<ScanHistory[]>([]);
@@ -64,64 +64,75 @@ export default function ScannerPage() {
     setIsSending(true);
 
     try {
+      // Parse QR Code (hanya berisi batch_id)
       const qrData = JSON.parse(decodedText);
-      
-      let usersArray = [];
-      if (qrData.u && Array.isArray(qrData.u)) {
-        usersArray = qrData.u;
-      } else {
-        throw new Error("Format data tidak valid: tidak menemukan array users");
+      const batchId = qrData.batch_id || "ABSENSI-001";
+
+      // Ambil data dari Apps Script berdasarkan batch_id
+      const response = await fetch(`${APPS_SCRIPT_URL}?action=getBatch&batch_id=${batchId}`);
+      const batchData = await response.json();
+
+      if (!batchData.users || batchData.users.length === 0) {
+        throw new Error("Data batch tidak ditemukan");
       }
 
-    const convertedUsers = usersArray.map((item: any[]) => ({
-      user_id: item[0] || "N/A",
-      nama_user: item[1] || "N/A",
-      nim_user: item[2] || "N/A",
-      device_id: item[3] || "N/A",
-      course_id: item[4] || "N/A",
-      session_id: item[5] || "N/A"
-    }));
+      // Hitung urutan scan berdasarkan yang sudah discan
+      const scannedNIMs = JSON.parse(localStorage.getItem('scannedNIMs') || '[]');
+      const nextIndex = scannedNIMs.length;
 
-      console.log('Converted users:', convertedUsers);
-      console.log('Current index:', currentIndex);
-      console.log('Is data loaded:', isDataLoaded);
-
-      // Jika pertama kali scan atau data berbeda, simpan semua data
-    if (!isDataLoaded) {
-      setAllUsers(convertedUsers);
-      setIsDataLoaded(true);
-      setCurrentIndex(0);
-      
-      // Scan pertama - kirim user pertama
-      await processScan(convertedUsers[0], 1, convertedUsers);
-    } else {
-      // Gunakan currentIndex yang sudah ada
-      const currentUser = allUsers[currentIndex];
-      if (!currentUser) {
-        throw new Error(`Tidak ada data user untuk index ${currentIndex}`);
+      if (nextIndex >= batchData.users.length) {
+        alert("Semua data sudah discan!");
+        return;
       }
-      await processScan(currentUser, currentIndex + 1, allUsers);
+
+      const currentUser = batchData.users[nextIndex];
+
+      // Kirim data scan ke Apps Script
+      const scanData = {
+        batch_id: batchId,
+        scan_number: nextIndex + 1,
+        nim_user: currentUser.nim,
+        nama_user: currentUser.name,
+        user_id: currentUser.uid,
+        device_id: currentUser.did,
+        course_id: currentUser.cid,
+        session_id: currentUser.sid,
+        scanned_at: new Date().toISOString(),
+      };
+
+      const formData = new URLSearchParams();
+      formData.append("action", "record_scan");
+      formData.append("data", JSON.stringify(scanData));
+
+      await fetch(APPS_SCRIPT_URL, {
+        method: "POST",
+        mode: "no-cors",
+        body: formData,
+      });
+
+      // Simpan di localStorage
+      scannedNIMs.push(currentUser.nim);
+      localStorage.setItem('scannedNIMs', JSON.stringify(scannedNIMs));
+
+      // Tampilkan hasil
+      const newScan: ScanHistory = {
+        id: Date.now().toString(),
+        user_id: currentUser.uid || currentUser.user_id || "N/A",
+        nama_user: currentUser.name || currentUser.nama_user || "N/A",
+        nim_user: currentUser.nim || currentUser.nim_user || "N/A",
+        scan_number: nextIndex + 1,
+        timestamp: new Date(),
+        status: "success"
+      };
+
+      setLastScan(newScan);
+
+    } catch (error) {
+      console.error("Error:", error);
+    } finally {
+      setIsSending(false);
     }
-
-  } catch (error) {
-    console.error("Scan error:", error);
-    
-    const errorScan: ScanHistory = {
-      id: Date.now().toString(),
-      user_id: "ERROR",
-      nama_user: "Gagal",
-      nim_user: "-",
-      scan_number: currentIndex + 1,
-      timestamp: new Date(),
-      status: "error",
-      message: error instanceof Error ? error.message : "Format QR Code tidak valid",
-    };
-    
-    setLastScan(errorScan);
-  } finally {
-    setIsSending(false);
-  }
-};
+  };
 
   // Fungsi terpisah untuk proses scan
   const processScan = async (currentUser: any, scanNumber: number, usersList: any[]) => {
@@ -150,43 +161,43 @@ export default function ScannerPage() {
     });
 
     // Simpan NIM yang sudah discan ke localStorage untuk sinkronisasi dengan barcode page
-  const scannedNIMs = JSON.parse(localStorage.getItem('scannedNIMs') || '[]');
-  if (!scannedNIMs.includes(currentUser.nim_user)) {
-    scannedNIMs.push(currentUser.nim_user);
-    localStorage.setItem('scannedNIMs', JSON.stringify(scannedNIMs));
-  }
+    const scannedNIMs = JSON.parse(localStorage.getItem('scannedNIMs') || '[]');
+    if (!scannedNIMs.includes(currentUser.nim_user)) {
+      scannedNIMs.push(currentUser.nim_user);
+      localStorage.setItem('scannedNIMs', JSON.stringify(scannedNIMs));
+    }
 
     // Catat history scan
-  // Catat history
-  const newScan: ScanHistory = {
-    id: Date.now().toString(),
-    user_id: currentUser.user_id,
-    nama_user: currentUser.nama_user,
-    nim_user: currentUser.nim_user,
-    scan_number: scanNumber,
-    timestamp: new Date(),
-    status: "success",
+    // Catat history
+    const newScan: ScanHistory = {
+      id: Date.now().toString(),
+      user_id: currentUser.user_id,
+      nama_user: currentUser.nama_user,
+      nim_user: currentUser.nim_user,
+      scan_number: scanNumber,
+      timestamp: new Date(),
+      status: "success",
+    };
+
+    setScanHistory(prev => {
+      const updated = [newScan, ...prev].slice(0, 20);
+      localStorage.setItem("scanHistory", JSON.stringify(updated));
+      return updated;
+    });
+
+    setLastScan(newScan);
+    setTotalScans(prev => prev + 1);
+
+    // Update index
+    if (scanNumber < usersList.length) {
+      setCurrentIndex(scanNumber);
+    } else {
+      setCurrentIndex(0);
+      alert("Semua data telah discan! Kembali ke awal.");
+    }
+
+    if (navigator.vibrate) navigator.vibrate(100);
   };
-
-  setScanHistory(prev => {
-    const updated = [newScan, ...prev].slice(0, 20);
-    localStorage.setItem("scanHistory", JSON.stringify(updated));
-    return updated;
-  });
-  
-  setLastScan(newScan);
-  setTotalScans(prev => prev + 1);
-
-  // Update index
-  if (scanNumber < usersList.length) {
-    setCurrentIndex(scanNumber);
-  } else {
-    setCurrentIndex(0);
-    alert("Semua data telah discan! Kembali ke awal.");
-  }
-
-  if (navigator.vibrate) navigator.vibrate(100);
-};
 
   const clearHistory = () => {
     setScanHistory([]);
@@ -273,7 +284,7 @@ export default function ScannerPage() {
                   <span>{Math.round(((currentIndex + 1) / allUsers.length) * 100)}%</span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-2.5">
-                  <div 
+                  <div
                     className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
                     style={{ width: `${((currentIndex + 1) / allUsers.length) * 100}%` }}
                   ></div>
@@ -292,7 +303,7 @@ export default function ScannerPage() {
                 <div>
                   <h2 className="text-lg font-semibold">Scan QR Code</h2>
                   <p className="text-sm text-gray-500">
-                    {isDataLoaded 
+                    {isDataLoaded
                       ? `Scan untuk data ke-${currentIndex + 1} (${allUsers[currentIndex]?.nama_user || '-'})`
                       : "Scan QR Code master untuk memulai"}
                   </p>
@@ -312,11 +323,10 @@ export default function ScannerPage() {
           {/* Last Scan Result */}
           {lastScan && (
             <div
-              className={`bg-white rounded-2xl shadow-xl p-6 mb-6 border-l-8 ${
-                lastScan.status === "success"
+              className={`bg-white rounded-2xl shadow-xl p-6 mb-6 border-l-8 ${lastScan.status === "success"
                   ? "border-green-500"
                   : "border-red-500"
-              }`}
+                }`}
             >
               <div className="flex items-start gap-4">
                 {lastScan.status === "success" ? (
@@ -379,9 +389,8 @@ export default function ScannerPage() {
                     className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition"
                   >
                     <div
-                      className={`p-2 rounded-full ${
-                        scan.status === "success" ? "bg-green-100" : "bg-red-100"
-                      }`}
+                      className={`p-2 rounded-full ${scan.status === "success" ? "bg-green-100" : "bg-red-100"
+                        }`}
                     >
                       {scan.status === "success" ? (
                         <CheckCircle className="w-4 h-4 text-green-600" />
