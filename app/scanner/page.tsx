@@ -1,4 +1,3 @@
-// app/scanner/page.tsx
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -55,106 +54,69 @@ export default function ScannerPage() {
       setScanHistory(history);
       setTotalScans(history.length);
     }
+
+    // Load scanned NIMs dari localStorage untuk sync dengan barcode page
+    const scannedNIMs = JSON.parse(localStorage.getItem('scannedNIMs') || '[]');
+    console.log('Scanned NIMs:', scannedNIMs);
   }, []);
 
-  // Scan handler
-
-    const handleScan = async (decodedText: string) => {
+  const handleScan = async (decodedText: string) => {
     setIsSending(true);
 
     try {
-        const qrData = JSON.parse(decodedText);
-        
-        let usersArray = [];
-        if (qrData.usr && Array.isArray(qrData.usr)) {
+      const qrData = JSON.parse(decodedText);
+      
+      let usersArray = [];
+      if (qrData.usr && Array.isArray(qrData.usr)) {
         usersArray = qrData.usr;
-        } else {
-        throw new Error("Format data tidak valid");
-        }
+      } else {
+        throw new Error("Format data tidak valid: tidak menemukan array users");
+      }
 
-        const convertedUsers = usersArray.map((u: any) => ({
+      const convertedUsers = usersArray.map((u: any) => ({
         user_id: u.u || "N/A",
         device_id: u.d || "N/A",
         course_id: u.c || "N/A",
         session_id: u.s || "N/A",
         nama_user: u.n || "N/A",
         nim_user: u.i || "N/A",
-        }));
+      }));
 
-        // Jika pertama kali scan, simpan semua data
-        if (!isDataLoaded) {
+      console.log('Converted users:', convertedUsers);
+      console.log('Current index:', currentIndex);
+      console.log('Is data loaded:', isDataLoaded);
+
+      // Jika pertama kali scan atau data berbeda, simpan semua data
+      if (!isDataLoaded || JSON.stringify(allUsers) !== JSON.stringify(convertedUsers)) {
         setAllUsers(convertedUsers);
         setIsDataLoaded(true);
         setCurrentIndex(0);
-        }
-
-        // Ambil user berdasarkan index
-        const currentUser = convertedUsers[currentIndex];
+        
+        // Gunakan index 0 untuk scan pertama
+        const currentUser = convertedUsers[0];
         
         if (!currentUser) {
-        throw new Error("Tidak ada data user");
+          throw new Error("Tidak ada data user");
         }
 
-        // Kirim data dengan nomor urut
-        const scanData = {
-        scan_number: currentIndex + 1,
-        nim_user: currentUser.nim_user,
-        nama_user: currentUser.nama_user,
-        user_id: currentUser.user_id,
-        device_id: currentUser.device_id,
-        course_id: currentUser.course_id,
-        session_id: currentUser.session_id,
-        scanned_at: new Date().toISOString(),
-        };
-
-        const formData = new URLSearchParams();
-        formData.append("barcode_data", JSON.stringify(scanData));
-
-        await fetch(APPS_SCRIPT_URL, {
-        method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: formData,
-        });
-
-        // 🔥 TAMBAHKAN DI SINI - Setelah fetch berhasil 🔥
-        const scannedNIMs = JSON.parse(localStorage.getItem('scannedNIMs') || '[]');
-        if (!scannedNIMs.includes(currentUser.nim_user)) {
-        scannedNIMs.push(currentUser.nim_user);
-        localStorage.setItem('scannedNIMs', JSON.stringify(scannedNIMs));
+        // Kirim data dengan nomor urut 1
+        await processScan(currentUser, 1, convertedUsers);
+      } else {
+        // Gunakan currentIndex yang sudah ada
+        const currentUser = allUsers[currentIndex];
+        
+        if (!currentUser) {
+          throw new Error(`Tidak ada data user untuk index ${currentIndex}`);
         }
 
-        // Catat history scan
-        const newScan: ScanHistory = {
-        id: Date.now().toString(),
-        user_id: currentUser.user_id,
-        nama_user: currentUser.nama_user,
-        nim_user: currentUser.nim_user,
-        scan_number: currentIndex + 1,
-        timestamp: new Date(),
-        status: "success",
-        };
-
-        setScanHistory(prev => [newScan, ...prev].slice(0, 20));
-        setLastScan(newScan);
-        setTotalScans(prev => prev + 1);
-
-        // Update ke index berikutnya
-        const nextIndex = currentIndex + 1;
-        if (nextIndex < convertedUsers.length) {
-        setCurrentIndex(nextIndex);
-        } else {
-        setCurrentIndex(0); // Reset jika sudah selesai
-        alert("Semua data telah discan!");
-        }
-
-        if (navigator.vibrate) navigator.vibrate(100);
+        // Kirim data dengan nomor urut currentIndex + 1
+        await processScan(currentUser, currentIndex + 1, allUsers);
+      }
 
     } catch (error) {
-        console.error("Scan error:", error);
-        
-        // Catat error scan
-        const errorScan: ScanHistory = {
+      console.error("Scan error:", error);
+      
+      const errorScan: ScanHistory = {
         id: Date.now().toString(),
         user_id: "ERROR",
         nama_user: "Gagal",
@@ -163,27 +125,98 @@ export default function ScannerPage() {
         timestamp: new Date(),
         status: "error",
         message: error instanceof Error ? error.message : "Format QR Code tidak valid",
-        };
-        
-        setLastScan(errorScan);
+      };
+      
+      setLastScan(errorScan);
     } finally {
-        setIsSending(false);
+      setIsSending(false);
     }
+  };
+
+  // Fungsi terpisah untuk proses scan
+  const processScan = async (currentUser: any, scanNumber: number, usersList: any[]) => {
+    // Kirim data dengan nomor urut
+    const scanData = {
+      scan_number: scanNumber,
+      nim_user: currentUser.nim_user,
+      nama_user: currentUser.nama_user,
+      user_id: currentUser.user_id,
+      device_id: currentUser.device_id,
+      course_id: currentUser.course_id,
+      session_id: currentUser.session_id,
+      scanned_at: new Date().toISOString(),
     };
+
+    console.log('Mengirim data:', scanData);
+
+    const formData = new URLSearchParams();
+    formData.append("barcode_data", JSON.stringify(scanData));
+
+    await fetch(APPS_SCRIPT_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: formData,
+    });
+
+    // Simpan NIM yang sudah discan ke localStorage untuk sinkronisasi dengan barcode page
+    const scannedNIMs = JSON.parse(localStorage.getItem('scannedNIMs') || '[]');
+    if (!scannedNIMs.includes(currentUser.nim_user)) {
+      scannedNIMs.push(currentUser.nim_user);
+      localStorage.setItem('scannedNIMs', JSON.stringify(scannedNIMs));
+      console.log('Updated scanned NIMs:', scannedNIMs);
+    }
+
+    // Catat history scan
+    const newScan: ScanHistory = {
+      id: Date.now().toString(),
+      user_id: currentUser.user_id,
+      nama_user: currentUser.nama_user,
+      nim_user: currentUser.nim_user,
+      scan_number: scanNumber,
+      timestamp: new Date(),
+      status: "success",
+    };
+
+    setScanHistory(prev => {
+      const updated = [newScan, ...prev].slice(0, 20);
+      localStorage.setItem("scanHistory", JSON.stringify(updated));
+      return updated;
+    });
+    
+    setLastScan(newScan);
+    setTotalScans(prev => prev + 1);
+
+    // Update ke index berikutnya
+    const nextIndex = scanNumber; // Karena scanNumber = currentIndex + 1
+    if (nextIndex < usersList.length) {
+      setCurrentIndex(nextIndex);
+      console.log('Next index:', nextIndex);
+    } else {
+      setCurrentIndex(0); // Reset jika sudah selesai
+      alert("Semua data telah discan! Kembali ke awal.");
+    }
+
+    if (navigator.vibrate) navigator.vibrate(100);
+  };
 
   const clearHistory = () => {
     setScanHistory([]);
     setTotalScans(0);
     localStorage.removeItem("scanHistory");
+    // Tidak hapus scannedNIMs karena untuk sync dengan barcode
   };
 
-    const resetScanner = () => {
+  const resetScanner = () => {
     setAllUsers([]);
     setIsDataLoaded(false);
     setCurrentIndex(0);
-    localStorage.removeItem('scannedNIMs'); // 🔥 TAMBAHKAN INI
+    localStorage.removeItem('scannedNIMs');
+    localStorage.removeItem('scanHistory');
+    setScanHistory([]);
+    setTotalScans(0);
     alert("Scanner direset. Scan QR Code lagi untuk memulai dari awal.");
-    };
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
