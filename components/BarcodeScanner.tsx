@@ -13,8 +13,8 @@ interface BarcodeScannerProps {
 
 const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
   onScan,
-  width = 200,
-  height = 200,
+  width = 400,
+  height = 400,
   fps = 10
 }) => {
   const scannerRef = useRef<Html5Qrcode | null>(null);
