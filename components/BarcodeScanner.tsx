@@ -33,7 +33,8 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
 
   const startScanner = async () => {
     try {
-      console.log('Memulai scanner...');
+      alert('Mencoba memulai scanner...');
+      
       await scannerRef.current?.start(
         { facingMode: 'environment' },
         {
@@ -41,16 +42,17 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
           qrbox: { width: 300, height: 300 },
         },
         (decodedText) => {
-          console.log('Barcode terdeteksi:', decodedText); // <-- LIhat ini
+          alert('BERHASIL! Data: ' + decodedText);
           onScan(decodedText);
         },
         (errorMessage) => {
-          console.debug('Scan error:', errorMessage);
+          alert('Error scan: ' + errorMessage);
         }
       );
-      console.log('Scanner started successfully');
+      
+      alert('Scanner berhasil dimulai!');
     } catch (err) {
-      console.error('Gagal memulai scanner:', err);
+      alert('Gagal total: ' + err);
     }
   };
 
