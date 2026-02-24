@@ -37,7 +37,7 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
         { facingMode: 'environment' },
         {
           fps,
-          qrbox: { width: 250, height: 250 },
+          qrbox: { width: 100, height: 100 },
         },
         (decodedText) => {
           // Panggil callback onScan saat barcode terdeteksi
