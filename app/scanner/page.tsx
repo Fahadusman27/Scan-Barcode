@@ -18,7 +18,7 @@ import {
 import BarcodeScanner from "@/components/BarcodeScanner";
 
 const APPS_SCRIPT_URL =
-  "https://script.google.com/macros/s/AKfycbzMyfd1oLdIvaTzgmFZffOGG5fq6MwHMTfqQF7OFoLCbER5oVkIGqUMoCy_PkPECXK2eg/exec";
+  "https://script.google.com/macros/s/AKfycbzyNnvR7s9Dr0qv9VdS6ngZysjBCZFYB72YyU7kUb3acKtXUiRd3I78qZdPUmblog3AhA/exec";
 
 interface ScanHistory {
   id: string;
