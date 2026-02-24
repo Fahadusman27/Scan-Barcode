@@ -6,218 +6,145 @@ import Link from "next/link";
 import {
   ArrowLeft,
   Camera,
-  LogIn,
-  LogOut,
-  User,
   CheckCircle,
   XCircle,
   History,
   QrCode,
   Users,
-  Clock,
   Download,
   Smartphone,
+  ChevronRight,
+  Hash
 } from "lucide-react";
 import BarcodeScanner from "@/components/BarcodeScanner";
 
 const APPS_SCRIPT_URL =
   "https://script.google.com/macros/s/AKfycbzMyfd1oLdIvaTzgmFZffOGG5fq6MwHMTfqQF7OFoLCbER5oVkIGqUMoCy_PkPECXK2eg/exec";
 
-interface User {
-  name: string;
-  isLoggedIn: boolean;
-  loginTime?: Date;
-}
-
-interface ScanResult {
-  user_id: string;
-  device_id: string;
-  course_id: string;
-  session_id: string;
-  nama_user: string;
-  nim_user: string;
-}
-
 interface ScanHistory {
   id: string;
-  scanner_name: string;
-  total_data: number;
-  first_user?: string;
+  user_id: string;
+  nama_user: string;
+  nim_user: string;
+  scan_number: number;
   timestamp: Date;
   status: "success" | "error";
   message?: string;
 }
 
 export default function ScannerPage() {
-  // State untuk user login
-  const [user, setUser] = useState<User>({ name: "", isLoggedIn: false });
-  const [loginInput, setLoginInput] = useState("");
-
+  // State untuk data dari QR Code
+  const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [currentIndex, setCurrentIndex] = useState<number>(0);
+  const [isDataLoaded, setIsDataLoaded] = useState<boolean>(false);
+  
   // State untuk scan
   const [lastScan, setLastScan] = useState<ScanHistory | null>(null);
   const [scanHistory, setScanHistory] = useState<ScanHistory[]>([]);
   const [isSending, setIsSending] = useState(false);
-  const [scannedUsers, setScannedUsers] = useState<any[]>([]);
-  const [showPreview, setShowPreview] = useState(false);
+  const [totalScans, setTotalScans] = useState<number>(0);
 
   // Load history dari localStorage
   useEffect(() => {
     const savedHistory = localStorage.getItem("scanHistory");
     if (savedHistory) {
-      setScanHistory(
-        JSON.parse(savedHistory).map((item: any) => ({
-          ...item,
-          timestamp: new Date(item.timestamp),
-        })),
-      );
+      const history = JSON.parse(savedHistory).map((item: any) => ({
+        ...item,
+        timestamp: new Date(item.timestamp)
+      }));
+      setScanHistory(history);
+      setTotalScans(history.length);
     }
   }, []);
 
-  // Login handler
-  const handleLogin = () => {
-    if (loginInput.trim()) {
-      setUser({
-        name: loginInput.trim(),
-        isLoggedIn: true,
-        loginTime: new Date(),
-      });
-      setLoginInput("");
-    }
-  };
-
-  const handleLogout = () => {
-    setUser({ name: "", isLoggedIn: false });
-    setLastScan(null);
-    setScannedUsers([]);
-  };
-
   // Scan handler
-  const handleScan = async (decodedText: string) => {
-    if (!user.isLoggedIn) {
-      alert("Silakan login terlebih dahulu!");
-      return;
+const handleScan = async (decodedText: string) => {
+  setIsSending(true);
+
+  try {
+    const qrData = JSON.parse(decodedText);
+    
+    let usersArray = [];
+    if (qrData.usr && Array.isArray(qrData.usr)) {
+      usersArray = qrData.usr;
+    } else {
+      throw new Error("Format data tidak valid");
     }
 
-    setIsSending(true);
+    const convertedUsers = usersArray.map((u: any) => ({
+      user_id: u.u || "N/A",
+      device_id: u.d || "N/A",
+      course_id: u.c || "N/A",
+      session_id: u.s || "N/A",
+      nama_user: u.n || "N/A",
+      nim_user: u.i || "N/A",
+    }));
 
-    try {
-      // Parse data dari QR Code
-      const qrData = JSON.parse(decodedText);
-
-      // 🔥 CEK STRUKTUR DATA YANG SESUAI 🔥
-      console.log("Data dari QR Code:", qrData); // Untuk debugging
-
-      // Ambil array users - struktur Anda menggunakan "usr"
-      let usersArray = [];
-
-      if (qrData.usr && Array.isArray(qrData.usr)) {
-        // Struktur Anda: { usr: [...] }
-        usersArray = qrData.usr;
-      } else {
-        throw new Error("Format data tidak valid: tidak menemukan array users");
-      }
-
-      if (usersArray.length === 0) {
-        throw new Error("Data users kosong");
-      }
-
-      // Konversi ke format yang diharapkan
-      const convertedUsers = usersArray.map((u: any) => ({
-        user_id: u.u || "N/A",
-        device_id: u.d || "N/A",
-        course_id: u.c || "N/A",
-        session_id: u.s || "N/A",
-        nama_user: u.n || "N/A",
-        nim_user: u.i || "N/A",
-      }));
-
-      setScannedUsers(convertedUsers);
-      setShowPreview(true);
-
-      // Kirim data ke spreadsheet
-      let successCount = 0;
-      for (const userData of convertedUsers) {
-        const scanData = {
-          scanner_name: user.name,
-          user_id: userData.user_id,
-          device_id: userData.device_id,
-          course_id: userData.course_id,
-          session_id: userData.session_id,
-          nama_user: userData.nama_user,
-          nim_user: userData.nim_user,
-          scanned_at: new Date().toISOString(),
-        };
-
-        const formData = new URLSearchParams();
-        formData.append("barcode_data", JSON.stringify(scanData));
-
-        await fetch(APPS_SCRIPT_URL, {
-          method: "POST",
-          mode: "no-cors",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: formData,
-        });
-        successCount++;
-      }
-
-      // Catat history scan
-      const newScan: ScanHistory = {
-        id: Date.now().toString(),
-        scanner_name: user.name,
-        total_data: convertedUsers.length,
-        first_user: convertedUsers[0]?.nama_user,
-        timestamp: new Date(),
-        status: "success",
-      };
-
-      const updatedHistory = [newScan, ...scanHistory].slice(0, 20);
-      setScanHistory(updatedHistory);
-      setLastScan(newScan);
-
-      localStorage.setItem("scanHistory", JSON.stringify(updatedHistory));
-
-      if (navigator.vibrate) navigator.vibrate(100);
-    } catch (error) {
-      console.error("Scan error:", error);
-      console.log("Data yang diterima:", decodedText);
-
-      const errorScan: ScanHistory = {
-        id: Date.now().toString(),
-        scanner_name: user.name,
-        total_data: 0,
-        timestamp: new Date(),
-        status: "error",
-        message:
-          error instanceof Error ? error.message : "Format QR Code tidak valid",
-      };
-
-      setLastScan(errorScan);
-    } finally {
-      setIsSending(false);
+    // Jika pertama kali scan, simpan semua data
+    if (!isDataLoaded) {
+      setAllUsers(convertedUsers);
+      setIsDataLoaded(true);
+      setCurrentIndex(0);
     }
-  };
+
+    // Ambil user berdasarkan index
+    const currentUser = convertedUsers[currentIndex];
+    
+    if (!currentUser) {
+      throw new Error("Tidak ada data user");
+    }
+
+    // Kirim data dengan nomor urut
+    const scanData = {
+      scan_number: currentIndex + 1,
+      nim_user: currentUser.nim_user,
+      nama_user: currentUser.nama_user,
+      user_id: currentUser.user_id,
+      device_id: currentUser.device_id,
+      course_id: currentUser.course_id,
+      session_id: currentUser.session_id,
+      scanned_at: new Date().toISOString(),
+    };
+
+    const formData = new URLSearchParams();
+    formData.append("barcode_data", JSON.stringify(scanData));
+
+    await fetch(APPS_SCRIPT_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: formData,
+    });
+
+    // Update ke index berikutnya
+    const nextIndex = currentIndex + 1;
+    if (nextIndex < convertedUsers.length) {
+      setCurrentIndex(nextIndex);
+    } else {
+      setCurrentIndex(0); // Reset jika sudah selesai
+      alert("Semua data telah discan!");
+    }
+
+    if (navigator.vibrate) navigator.vibrate(100);
+
+  } catch (error) {
+    console.error("Scan error:", error);
+  } finally {
+    setIsSending(false);
+  }
+};
 
   const clearHistory = () => {
     setScanHistory([]);
+    setTotalScans(0);
     localStorage.removeItem("scanHistory");
   };
 
-  const downloadResults = () => {
-    const data = {
-      scanner: user.name,
-      scan_time: new Date().toISOString(),
-      users: scannedUsers,
-    };
-
-    const blob = new Blob([JSON.stringify(data, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `scan-${user.name}-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const resetScanner = () => {
+    setAllUsers([]);
+    setIsDataLoaded(false);
+    setCurrentIndex(0);
+    alert("Scanner direset. Scan QR Code lagi untuk memulai dari awal.");
   };
 
   return (
@@ -234,25 +161,12 @@ export default function ScannerPage() {
               <span className="text-sm font-medium">Kembali</span>
             </Link>
 
-            {/* User Status Badge */}
-            {user.isLoggedIn && (
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2 bg-green-100 px-3 py-1.5 rounded-full">
-                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                  <User className="w-4 h-4 text-green-600" />
-                  <span className="text-sm font-medium text-green-700">
-                    {user.name}
-                  </span>
-                </div>
-                <button
-                  onClick={handleLogout}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-red-100 text-red-600 rounded-full hover:bg-red-200 transition text-sm"
-                >
-                  <LogOut className="w-3 h-3" />
-                  Logout
-                </button>
-              </div>
-            )}
+            <button
+              onClick={resetScanner}
+              className="text-sm px-3 py-1 bg-orange-100 text-orange-600 rounded-full hover:bg-orange-200 transition"
+            >
+              Reset Scanner
+            </button>
           </div>
         </div>
       </div>
@@ -263,279 +177,184 @@ export default function ScannerPage() {
           <div className="text-center mb-8">
             <h1 className="text-4xl font-bold text-gray-800 mb-2 flex items-center justify-center gap-2">
               <QrCode className="w-8 h-8 text-blue-600" />
-              Scanner Absensi
+              Scanner Absensi Berurutan
             </h1>
             <p className="text-gray-600">
-              Scan QR Code master untuk input data absensi
+              Scan QR Code master - Data akan keluar berurutan dari ID 1, 2, 3, ...
             </p>
           </div>
 
-          {/* Login Section */}
-          {!user.isLoggedIn ? (
-            <div className="max-w-md mx-auto mb-8">
-              <div className="bg-white rounded-2xl shadow-xl p-8">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="bg-blue-100 p-3 rounded-xl">
-                    <LogIn className="w-6 h-6 text-blue-600" />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-semibold">Login Scanner</h2>
-                    <p className="text-sm text-gray-500">
-                      Masukkan nama Anda untuk memulai
-                    </p>
-                  </div>
+          {/* Status Card */}
+          {isDataLoaded && (
+            <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-blue-50 p-4 rounded-lg text-center">
+                  <Hash className="w-6 h-6 text-blue-600 mx-auto mb-2" />
+                  <p className="text-sm text-gray-600">Scan Ke-</p>
+                  <p className="text-2xl font-bold text-blue-700">{currentIndex + 1}</p>
                 </div>
+                <div className="bg-green-50 p-4 rounded-lg text-center">
+                  <Users className="w-6 h-6 text-green-600 mx-auto mb-2" />
+                  <p className="text-sm text-gray-600">Total Data</p>
+                  <p className="text-2xl font-bold text-green-700">{allUsers.length}</p>
+                </div>
+                <div className="bg-purple-50 p-4 rounded-lg text-center">
+                  <ChevronRight className="w-6 h-6 text-purple-600 mx-auto mb-2" />
+                  <p className="text-sm text-gray-600">Sisa</p>
+                  <p className="text-2xl font-bold text-purple-700">
+                    {allUsers.length - (currentIndex + 1)}
+                  </p>
+                </div>
+              </div>
 
-                <div className="space-y-4">
-                  <input
-                    type="text"
-                    value={loginInput}
-                    onChange={(e) => setLoginInput(e.target.value)}
-                    placeholder="Contoh: Fahad, Budi, Siti"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    onKeyPress={(e) => e.key === "Enter" && handleLogin()}
-                  />
-                  <button
-                    onClick={handleLogin}
-                    disabled={!loginInput.trim()}
-                    className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-medium rounded-xl transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                  >
-                    <LogIn className="w-4 h-4" />
-                    Mulai Scan
-                  </button>
+              {/* Progress Bar */}
+              <div className="mt-4">
+                <div className="flex justify-between text-xs text-gray-600 mb-1">
+                  <span>Progress Scan</span>
+                  <span>{Math.round(((currentIndex + 1) / allUsers.length) * 100)}%</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2.5">
+                  <div 
+                    className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+                    style={{ width: `${((currentIndex + 1) / allUsers.length) * 100}%` }}
+                  ></div>
                 </div>
               </div>
             </div>
-          ) : (
-            <>
-              {/* Stats Card */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div className="bg-white rounded-xl shadow-lg p-4 border-l-4 border-blue-500">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-gray-500">Total Scan</p>
-                      <p className="text-2xl font-bold">{scanHistory.length}</p>
-                    </div>
-                    <History className="w-8 h-8 text-blue-500 opacity-50" />
-                  </div>
+          )}
+
+          {/* Scanner Card */}
+          <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="bg-green-100 p-2 rounded-lg">
+                  <Camera className="w-5 h-5 text-green-600" />
                 </div>
-                <div className="bg-white rounded-xl shadow-lg p-4 border-l-4 border-green-500">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-gray-500">Data Terkirim</p>
-                      <p className="text-2xl font-bold">
-                        {scanHistory.reduce(
-                          (acc, curr) => acc + curr.total_data,
-                          0,
-                        )}
-                      </p>
-                    </div>
-                    <Users className="w-8 h-8 text-green-500 opacity-50" />
-                  </div>
-                </div>
-                <div className="bg-white rounded-xl shadow-lg p-4 border-l-4 border-purple-500">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-gray-500">Login Sejak</p>
-                      <p className="text-sm font-medium">
-                        {user.loginTime?.toLocaleTimeString()}
-                      </p>
-                    </div>
-                    <Clock className="w-8 h-8 text-purple-500 opacity-50" />
-                  </div>
+                <div>
+                  <h2 className="text-lg font-semibold">Scan QR Code</h2>
+                  <p className="text-sm text-gray-500">
+                    {isDataLoaded 
+                      ? `Scan untuk data ke-${currentIndex + 1} (${allUsers[currentIndex]?.nama_user || '-'})`
+                      : "Scan QR Code master untuk memulai"}
+                  </p>
                 </div>
               </div>
-
-              {/* Scanner Card */}
-              <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="bg-green-100 p-2 rounded-lg">
-                      <Camera className="w-5 h-5 text-green-600" />
-                    </div>
-                    <div>
-                      <h2 className="text-lg font-semibold">Scan QR Code</h2>
-                      <p className="text-sm text-gray-500">
-                        Arahkan kamera ke QR Code master
-                      </p>
-                    </div>
-                  </div>
-                  {isSending && (
-                    <div className="flex items-center gap-2 bg-blue-50 px-4 py-2 rounded-lg">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-ping" />
-                      <span className="text-sm text-blue-600">
-                        Mengirim data...
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                <BarcodeScanner onScan={handleScan} />
-              </div>
-
-              {/* Preview Data */}
-              {showPreview && scannedUsers.length > 0 && (
-                <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
-                  <div className="flex justify-between items-center mb-4">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle className="w-5 h-5 text-green-600" />
-                      <h3 className="font-semibold">
-                        Preview Data ({scannedUsers.length} mahasiswa)
-                      </h3>
-                    </div>
-                    <button
-                      onClick={downloadResults}
-                      className="flex items-center gap-2 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm transition"
-                    >
-                      <Download className="w-4 h-4" />
-                      Download JSON
-                    </button>
-                  </div>
-
-                  <div className="overflow-x-auto max-h-60 border rounded-lg">
-                    <table className="w-full text-sm">
-                      <thead className="bg-gray-100 sticky top-0">
-                        <tr>
-                          <th className="px-4 py-2 text-left">NIM</th>
-                          <th className="px-4 py-2 text-left">Nama</th>
-                          <th className="px-4 py-2 text-left">User ID</th>
-                          <th className="px-4 py-2 text-left">Device</th>
-                          <th className="px-4 py-2 text-left">Course</th>
-                          <th className="px-4 py-2 text-left">Session</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {scannedUsers.map((user, idx) => (
-                          <tr key={idx} className="border-b hover:bg-gray-50">
-                            <td className="px-4 py-2 font-mono">
-                              {user.nim_user}
-                            </td>
-                            <td className="px-4 py-2">{user.nama_user}</td>
-                            <td className="px-4 py-2">{user.user_id}</td>
-                            <td className="px-4 py-2">{user.device_id}</td>
-                            <td className="px-4 py-2">{user.course_id}</td>
-                            <td className="px-4 py-2">{user.session_id}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+              {isSending && (
+                <div className="flex items-center gap-2 bg-blue-50 px-4 py-2 rounded-lg">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-ping" />
+                  <span className="text-sm text-blue-600">Mengirim data...</span>
                 </div>
               )}
+            </div>
 
-              {/* Last Scan Result */}
-              {lastScan && (
-                <div
-                  className={`bg-white rounded-2xl shadow-xl p-6 mb-6 border-l-8 ${
-                    lastScan.status === "success"
-                      ? "border-green-500"
-                      : "border-red-500"
-                  }`}
-                >
-                  <div className="flex items-start gap-4">
-                    {lastScan.status === "success" ? (
-                      <CheckCircle className="w-8 h-8 text-green-500 flex-shrink-0" />
-                    ) : (
-                      <XCircle className="w-8 h-8 text-red-500 flex-shrink-0" />
-                    )}
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-lg">
-                        {lastScan.status === "success"
-                          ? "Scan Berhasil"
-                          : "Scan Gagal"}
-                      </h3>
-                      {lastScan.status === "success" ? (
-                        <div className="mt-2 space-y-1">
-                          <p className="text-sm">
-                            ✅ {lastScan.total_data} data mahasiswa berhasil
-                            dikirim
-                          </p>
-                          <p className="text-sm">
-                            👤 Scanner: {lastScan.scanner_name}
-                          </p>
-                          {lastScan.first_user && (
-                            <p className="text-sm">
-                              📋 Contoh: {lastScan.first_user}
-                            </p>
-                          )}
-                        </div>
-                      ) : (
-                        <p className="text-sm text-red-600 mt-1">
-                          {lastScan.message}
-                        </p>
-                      )}
-                      <p className="text-xs text-gray-400 mt-2">
-                        {lastScan.timestamp.toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
+            <BarcodeScanner onScan={handleScan} />
+          </div>
 
-              {/* Scan History */}
-              {scanHistory.length > 0 && (
-                <div className="bg-white rounded-2xl shadow-xl p-6">
-                  <div className="flex justify-between items-center mb-4">
-                    <div className="flex items-center gap-2">
-                      <History className="w-5 h-5 text-gray-600" />
-                      <h3 className="font-semibold">Riwayat Scan</h3>
-                    </div>
-                    <button
-                      onClick={clearHistory}
-                      className="text-sm text-red-600 hover:text-red-700"
-                    >
-                      Hapus Riwayat
-                    </button>
-                  </div>
-
-                  <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
-                    {scanHistory.map((scan) => (
-                      <div
-                        key={scan.id}
-                        className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition"
-                      >
-                        <div
-                          className={`p-2 rounded-full ${
-                            scan.status === "success"
-                              ? "bg-green-100"
-                              : "bg-red-100"
-                          }`}
-                        >
-                          {scan.status === "success" ? (
-                            <CheckCircle className="w-4 h-4 text-green-600" />
-                          ) : (
-                            <XCircle className="w-4 h-4 text-red-600" />
-                          )}
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <p className="font-medium text-sm">
-                                {scan.scanner_name}
-                              </p>
-                              <p className="text-xs text-gray-500">
-                                {scan.total_data} data •{" "}
-                                {scan.first_user &&
-                                  `contoh: ${scan.first_user}`}
-                              </p>
-                            </div>
-                            <span className="text-xs text-gray-400">
-                              {scan.timestamp.toLocaleTimeString()}
-                            </span>
-                          </div>
-                        </div>
+          {/* Last Scan Result */}
+          {lastScan && (
+            <div
+              className={`bg-white rounded-2xl shadow-xl p-6 mb-6 border-l-8 ${
+                lastScan.status === "success"
+                  ? "border-green-500"
+                  : "border-red-500"
+              }`}
+            >
+              <div className="flex items-start gap-4">
+                {lastScan.status === "success" ? (
+                  <CheckCircle className="w-8 h-8 text-green-500 flex-shrink-0" />
+                ) : (
+                  <XCircle className="w-8 h-8 text-red-500 flex-shrink-0" />
+                )}
+                <div className="flex-1">
+                  <h3 className="font-semibold text-lg">
+                    {lastScan.status === "success"
+                      ? `Scan #${lastScan.scan_number} Berhasil`
+                      : "Scan Gagal"}
+                  </h3>
+                  {lastScan.status === "success" ? (
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <div>
+                        <p className="text-xs text-gray-500">NIM</p>
+                        <p className="font-mono font-medium">{lastScan.nim_user}</p>
                       </div>
-                    ))}
-                  </div>
+                      <div>
+                        <p className="text-xs text-gray-500">Nama</p>
+                        <p className="font-medium">{lastScan.nama_user}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500">User ID</p>
+                        <p className="font-mono">{lastScan.user_id}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-red-600 mt-1">{lastScan.message}</p>
+                  )}
+                  <p className="text-xs text-gray-400 mt-2">
+                    {lastScan.timestamp.toLocaleString()}
+                  </p>
                 </div>
-              )}
-            </>
+              </div>
+            </div>
+          )}
+
+          {/* Scan History */}
+          {scanHistory.length > 0 && (
+            <div className="bg-white rounded-2xl shadow-xl p-6">
+              <div className="flex justify-between items-center mb-4">
+                <div className="flex items-center gap-2">
+                  <History className="w-5 h-5 text-gray-600" />
+                  <h3 className="font-semibold">Riwayat Scan ({totalScans})</h3>
+                </div>
+                <button
+                  onClick={clearHistory}
+                  className="text-sm text-red-600 hover:text-red-700"
+                >
+                  Hapus Riwayat
+                </button>
+              </div>
+
+              <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
+                {scanHistory.map((scan) => (
+                  <div
+                    key={scan.id}
+                    className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition"
+                  >
+                    <div
+                      className={`p-2 rounded-full ${
+                        scan.status === "success" ? "bg-green-100" : "bg-red-100"
+                      }`}
+                    >
+                      {scan.status === "success" ? (
+                        <CheckCircle className="w-4 h-4 text-green-600" />
+                      ) : (
+                        <XCircle className="w-4 h-4 text-red-600" />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="font-medium text-sm">
+                            Scan #{scan.scan_number}: {scan.nama_user}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {scan.nim_user} • {scan.user_id}
+                          </p>
+                        </div>
+                        <span className="text-xs text-gray-400">
+                          {scan.timestamp.toLocaleTimeString()}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
 
           {/* Footer Info */}
           <div className="text-center mt-8 text-xs text-gray-500 flex items-center justify-center gap-1">
             <Smartphone className="w-3 h-3" />
-            <span>Pastikan QR Code master sudah tersedia</span>
+            <span>Scan berulang untuk mengirim data secara berurutan</span>
           </div>
         </div>
       </div>
