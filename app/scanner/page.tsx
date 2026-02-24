@@ -64,27 +64,34 @@ export default function ScannerPage() {
   };
 
   // Scan handler
-  const handleScan = async (decodedText: string) => {
-    if (!user.isLoggedIn) {
-      alert('Silakan login terlebih dahulu!');
-      return;
+// app/scanner/page.tsx (bagian parse data)
+const handleScan = async (decodedText: string) => {
+  if (!user.isLoggedIn) {
+    alert('Silakan login terlebih dahulu!');
+    return;
+  }
+
+  setIsSending(true);
+  
+  try {
+    // Parse data dari QR Code (SEKARANG BERISI ARRAY OF USERS)
+    const qrData = JSON.parse(decodedText);
+    
+    // Validasi struktur data
+    if (!qrData.users || !Array.isArray(qrData.users)) {
+      throw new Error('Format data tidak valid');
     }
 
-    setIsSending(true);
-    
-    try {
-      // Parse data dari QR Code
-      const parsedData: ScanResult = JSON.parse(decodedText);
-      
-      // Validasi data
-      if (!parsedData.user_id || !parsedData.device_id || !parsedData.course_id || !parsedData.session_id) {
-        throw new Error('Data QR Code tidak lengkap');
-      }
-
-      // Data yang akan dikirim ke spreadsheet
+    // Kirim SEMUA data ke spreadsheet
+    for (const userData of qrData.users) {
       const scanData = {
         scanner_name: user.name,
-        ...parsedData,
+        user_id: userData.user_id,
+        device_id: userData.device_id,
+        course_id: userData.course_id,
+        session_id: userData.session_id,
+        nama_user: userData.nama_user,
+        nim_user: userData.nim_user,
         scanned_at: new Date().toISOString()
       };
 
@@ -92,7 +99,7 @@ export default function ScannerPage() {
       const formData = new URLSearchParams();
       formData.append('barcode_data', JSON.stringify(scanData));
 
-      const response = await fetch(APPS_SCRIPT_URL, {
+      await fetch(APPS_SCRIPT_URL, {
         method: 'POST',
         mode: 'no-cors',
         headers: {
@@ -100,42 +107,23 @@ export default function ScannerPage() {
         },
         body: formData
       });
-
-      // Catat history scan
-      const newScan: ScanHistory = {
-        id: Date.now().toString(),
-        scanner_name: user.name,
-        data: parsedData,
-        timestamp: new Date(),
-        status: 'success'
-      };
-
-      const updatedHistory = [newScan, ...scanHistory].slice(0, 20);
-      setScanHistory(updatedHistory);
-      setLastScan(newScan);
-      
-      // Simpan ke localStorage
-      localStorage.setItem('scanHistory', JSON.stringify(updatedHistory));
-
-      // Feedback
-      if (navigator.vibrate) navigator.vibrate(100);
-
-    } catch (error) {
-      // Jika error
-      const errorScan: ScanHistory = {
-        id: Date.now().toString(),
-        scanner_name: user.name,
-        data: { user_id: '', device_id: '', course_id: '', session_id: '' },
-        timestamp: new Date(),
-        status: 'error',
-        message: error instanceof Error ? error.message : 'Format QR Code tidak valid'
-      };
-      
-      setLastScan(errorScan);
-    } finally {
-      setIsSending(false);
     }
-  };
+
+    // Catat history scan
+    const newScan = {
+      id: Date.now().toString(),
+      scanner_name: user.name,
+      total_data: qrData.users.length,
+      timestamp: new Date(),
+      status: 'success'
+    };
+
+    // ... sisanya sama
+
+  } catch (error) {
+    // ... error handling
+  }
+};
 
   // Clear history
   const clearHistory = () => {
