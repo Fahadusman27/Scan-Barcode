@@ -58,6 +58,7 @@ export default function ScannerPage() {
   }, []);
 
   // Scan handler
+
 const handleScan = async (decodedText: string) => {
   setIsSending(true);
 
